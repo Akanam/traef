@@ -1,0 +1,74 @@
+# ENTRYPOINT / ROUTER
+
+[http.routers]
+  [http.routers.myrouter]
+    rule = "Host(`bchain.example.in`)"
+    middlewares = ["auth"]
+    service = "goserver"
+    entryPoints = ["websecure"]
+
+    # will route TLS requests (and ignore non tls requests)
+    [http.routers.myrouter.tls]
+      options = "myoptions"
+      #certResolver = "myresolver"  <--- using custom tls certs because its a REST API and client need to send its cert for authentication which is not possible with letsencrypt
+      #[[http.routers.myrouter.tls.domains]]
+       # main = "bchain.example.in"
+
+  [http.routers.api]
+    rule = "Host(`traefik.example.in`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+    entryPoints = ["websecure"]  # <-- changed to `websecure` for https else moved it back to `web`
+    middlewares = ["auth"]
+    service = "api@internal"
+
+    # will route TLS requests (and ignore non tls requests)
+    [http.routers.api.tls]
+      certResolver = "myresolver"
+      # https://docs.traefik.io/routing/routers/#domains
+      [[http.routers.api.tls.domains]]
+        main = "traefik.example.in"
+
+  # redirecting http to https for dashboard
+  [http.routers.api-http]
+    entryPoints = ["web"]
+    rule = "Host(`traefik.example.in`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+    middlewares = ["auth", "redirect-to-https"]
+    service = "api@internal"
+
+# MIDDLEWARES
+
+[http.middlewares]
+  [http.middlewares.auth.basicAuth]
+    users = ["test:XXXX"]
+
+  [http.middlewares.redirect-to-https.redirectScheme]
+    scheme = "https"
+    port = "443"
+    permanent = true
+
+# SERVICES
+
+[http.services]
+  [http.services.goserver.loadBalancer]
+    [[http.services.goserver.loadBalancer.servers]]
+      url = "http://INSTANCE_PRIVATE-IP:8001"
+
+
+# CUSTOM TLS CERT
+
+[tls]
+  [[tls.certificates]]
+    certFile = "/run/secrets/server.crt"
+    keyFile = "/run/secrets/server.key"
+
+  [tls.stores]
+    [tls.stores.default]
+      [tls.stores.default.defaultCertificate]
+        certFile = "/run/secrets/server.crt"
+        keyFile = "/run/secrets/server.key"
+
+  [tls.options]
+    [tls.options.myoptions]
+      minVersion = "VersionTLS12"
+      sniStrict = true
+    #[tls.options.mintls13]
+    #  minVersion = "VersionTLS13"
